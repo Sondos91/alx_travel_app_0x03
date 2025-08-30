@@ -1,7 +1,54 @@
 from celery import shared_task
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import Payment
+from .models import Payment, Booking
+
+@shared_task
+def send_booking_confirmation_email(booking_id):
+    """
+    Send booking confirmation email to user
+    """
+    try:
+        booking = Booking.objects.get(id=booking_id)
+        user = booking.user
+        
+        subject = f'Booking Confirmation - {booking.destination}'
+        message = f"""
+        Dear {user.first_name or user.username},
+        
+        Your travel booking has been successfully created!
+        
+        Booking Details:
+        - Booking Reference: {booking.booking_reference}
+        - Destination: {booking.destination}
+        - Travel Date: {booking.travel_date}
+        - Return Date: {booking.return_date or 'One-way trip'}
+        - Number of Travelers: {booking.number_of_travelers}
+        - Total Amount: {booking.total_amount}
+        - Booking Status: {booking.get_booking_status_display()}
+        
+        Please complete your payment to confirm your booking.
+        
+        Thank you for choosing our travel services!
+        
+        Best regards,
+        Travel App Team
+        """
+        
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.EMAIL_DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+        
+        return f"Booking confirmation email sent to {user.email}"
+        
+    except Booking.DoesNotExist:
+        return f"Booking with ID {booking_id} not found"
+    except Exception as e:
+        return f"Error sending booking confirmation email: {str(e)}"
 
 @shared_task
 def send_payment_confirmation_email(payment_id):
@@ -33,7 +80,7 @@ def send_payment_confirmation_email(payment_id):
         send_mail(
             subject=subject,
             message=message,
-            from_email=settings.EMAIL_HOST_USER or 'noreply@travelapp.com',
+            from_email=settings.EMAIL_DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
             fail_silently=False,
         )
@@ -74,7 +121,7 @@ def send_payment_failure_email(payment_id):
         send_mail(
             subject=subject,
             message=message,
-            from_email=settings.EMAIL_HOST_USER or 'noreply@travelapp.com',
+            from_email=settings.EMAIL_DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
             fail_silently=False,
         )

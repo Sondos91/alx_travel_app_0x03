@@ -10,4 +10,8 @@ urlpatterns = [
     path('api/payment/webhook/', views.chapa_webhook, name='chapa_webhook'),
     path('api/payment/status/<uuid:payment_id>/', views.payment_status, name='payment_status'),
     path('api/payment/user/', views.user_payments, name='user_payments'),
+    
+    # Booking API endpoints
+    path('api/booking/', views.BookingViewSet.as_view(), name='booking_list_create'),
+    path('api/booking/<uuid:booking_id>/', views.BookingViewSet.as_view(), name='booking_detail'),
 ]

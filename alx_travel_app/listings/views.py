@@ -8,6 +8,9 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from django.conf import settings
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from .models import Payment, Booking
 from django.contrib.auth.models import User
 
@@ -333,3 +336,148 @@ def user_payments(request):
             'success': False,
             'message': f'Error: {str(e)}'
         }, status=500)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class BookingViewSet(View):
+    """
+    ViewSet for handling booking operations
+    """
+    
+    def post(self, request):
+        """
+        Create a new booking
+        """
+        try:
+            data = json.loads(request.body)
+            
+            # Extract required fields
+            user_id = data.get('user_id')
+            destination = data.get('destination')
+            travel_date = data.get('travel_date')
+            return_date = data.get('return_date')
+            number_of_travelers = data.get('number_of_travelers', 1)
+            total_amount = data.get('total_amount')
+            
+            # Validate required fields
+            if not all([user_id, destination, travel_date, total_amount]):
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Missing required fields: user_id, destination, travel_date, total_amount'
+                }, status=400)
+            
+            # Get user
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'User not found'
+                }, status=404)
+            
+            # Create booking
+            booking = Booking.objects.create(
+                user=user,
+                destination=destination,
+                travel_date=travel_date,
+                return_date=return_date,
+                number_of_travelers=number_of_travelers,
+                total_amount=total_amount,
+                booking_status='pending'
+            )
+            
+            # Trigger background task to send booking confirmation email
+            from .tasks import send_booking_confirmation_email
+            send_booking_confirmation_email.delay(str(booking.id))
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Booking created successfully',
+                'data': {
+                    'booking_id': str(booking.id),
+                    'booking_reference': booking.booking_reference,
+                    'destination': booking.destination,
+                    'travel_date': booking.travel_date.isoformat(),
+                    'return_date': booking.return_date.isoformat() if booking.return_date else None,
+                    'number_of_travelers': booking.number_of_travelers,
+                    'total_amount': str(booking.total_amount),
+                    'booking_status': booking.booking_status,
+                    'created_at': booking.created_at.isoformat()
+                }
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'message': 'Invalid JSON data'
+            }, status=400)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'message': f'Internal server error: {str(e)}'
+            }, status=500)
+    
+    def get(self, request, booking_id=None):
+        """
+        Get booking details or list all bookings for a user
+        """
+        if booking_id:
+            # Get specific booking
+            try:
+                booking = get_object_or_404(Booking, id=booking_id)
+                return JsonResponse({
+                    'success': True,
+                    'data': {
+                        'booking_id': str(booking.id),
+                        'booking_reference': booking.booking_reference,
+                        'destination': booking.destination,
+                        'travel_date': booking.travel_date.isoformat(),
+                        'return_date': booking.return_date.isoformat() if booking.return_date else None,
+                        'number_of_travelers': booking.number_of_travelers,
+                        'total_amount': str(booking.total_amount),
+                        'booking_status': booking.booking_status,
+                        'payment_id': str(booking.payment.id) if booking.payment else None,
+                        'created_at': booking.created_at.isoformat(),
+                        'updated_at': booking.updated_at.isoformat()
+                    }
+                })
+            except Exception as e:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Error retrieving booking: {str(e)}'
+                }, status=500)
+        else:
+            # Get user_id from query params
+            user_id = request.GET.get('user_id')
+            if not user_id:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'user_id parameter is required'
+                }, status=400)
+            
+            try:
+                bookings = Booking.objects.filter(user_id=user_id)
+                bookings_data = []
+                
+                for booking in bookings:
+                    bookings_data.append({
+                        'booking_id': str(booking.id),
+                        'booking_reference': booking.booking_reference,
+                        'destination': booking.destination,
+                        'travel_date': booking.travel_date.isoformat(),
+                        'return_date': booking.return_date.isoformat() if booking.return_date else None,
+                        'number_of_travelers': booking.number_of_travelers,
+                        'total_amount': str(booking.total_amount),
+                        'booking_status': booking.booking_status,
+                        'created_at': booking.created_at.isoformat()
+                    })
+                
+                return JsonResponse({
+                    'success': True,
+                    'data': bookings_data
+                })
+                
+            except Exception as e:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Error retrieving bookings: {str(e)}'
+                }, status=500)

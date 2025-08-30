@@ -126,17 +126,24 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CHAPA_SECRET_KEY = 'your_chapa_secret_key_here'
 CHAPA_WEBHOOK_SECRET = 'your_webhook_secret_here'
 
-# Email Configuration (for payment confirmations)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Email Configuration (for payment confirmations and booking notifications)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Use console backend for development
 EMAIL_HOST = 'localhost'
 EMAIL_PORT = 1025
 EMAIL_USE_TLS = False
-EMAIL_HOST_USER = ''
+EMAIL_HOST_USER = 'noreply@travelapp.com'
 EMAIL_HOST_PASSWORD = ''
+EMAIL_DEFAULT_FROM_EMAIL = 'noreply@travelapp.com'
 
 # Celery Configuration (for background tasks)
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = 'amqp://guest:guest@localhost:5672//'  # RabbitMQ connection
+CELERY_RESULT_BACKEND = 'rpc://'  # RPC backend for results
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_ENABLE_UTC = True
+
+# Celery Task Settings
+CELERY_TASK_ALWAYS_EAGER = False  # Set to True for testing without Celery
+CELERY_TASK_EAGER_PROPAGATES = True

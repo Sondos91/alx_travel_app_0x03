@@ -11,6 +11,12 @@ from django.conf import settings
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 from .models import Payment, Booking
 from django.contrib.auth.models import User
 
@@ -19,8 +25,51 @@ CHAPA_SECRET_KEY = os.getenv('CHAPA_SECRET_KEY', 'your_chapa_secret_key_here')
 CHAPA_BASE_URL = 'https://api.chapa.co/v1'
 CHAPA_WEBHOOK_SECRET = os.getenv('CHAPA_WEBHOOK_SECRET', 'your_webhook_secret_here')
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@extend_schema(
+    operation_id='initiate_payment',
+    summary='Initiate Payment',
+    description='Initiate a payment transaction with Chapa API for a booking',
+    request={
+        'application/json': {
+            'type': 'object',
+            'properties': {
+                'user_id': {'type': 'integer', 'description': 'ID of the user making the payment'},
+                'booking_reference': {'type': 'string', 'description': 'Unique booking reference'},
+                'amount': {'type': 'string', 'description': 'Payment amount'},
+                'currency': {'type': 'string', 'description': 'Payment currency (default: NGN)'},
+                'email': {'type': 'string', 'format': 'email', 'description': 'User email address'},
+                'first_name': {'type': 'string', 'description': 'User first name'},
+                'last_name': {'type': 'string', 'description': 'User last name'},
+            },
+            'required': ['user_id', 'booking_reference', 'amount', 'email', 'first_name', 'last_name']
+        }
+    },
+    responses={
+        200: {
+            'description': 'Payment initiated successfully',
+            'content': {
+                'application/json': {
+                    'example': {
+                        'success': True,
+                        'message': 'Payment initiated successfully',
+                        'data': {
+                            'payment_id': 'uuid-here',
+                            'payment_url': 'https://checkout.chapa.co/...',
+                            'transaction_id': 'TX_BK12345678_1234567890',
+                            'chapa_reference': 'chapa-ref-here'
+                        }
+                    }
+                }
+            }
+        },
+        400: {'description': 'Bad request - Missing required fields'},
+        404: {'description': 'User not found'},
+        500: {'description': 'Internal server error'}
+    },
+    tags=['Payments']
+)
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def initiate_payment(request):
     """
     Initiate payment with Chapa API
@@ -337,6 +386,53 @@ def user_payments(request):
             'message': f'Error: {str(e)}'
         }, status=500)
 
+@extend_schema(
+    operation_id='create_booking',
+    summary='Create Booking',
+    description='Create a new travel booking and trigger confirmation email',
+    request={
+        'application/json': {
+            'type': 'object',
+            'properties': {
+                'user_id': {'type': 'integer', 'description': 'ID of the user making the booking'},
+                'destination': {'type': 'string', 'description': 'Travel destination'},
+                'travel_date': {'type': 'string', 'format': 'date', 'description': 'Travel date (YYYY-MM-DD)'},
+                'return_date': {'type': 'string', 'format': 'date', 'description': 'Return date (YYYY-MM-DD) - optional'},
+                'number_of_travelers': {'type': 'integer', 'description': 'Number of travelers (default: 1)'},
+                'total_amount': {'type': 'string', 'description': 'Total booking amount'},
+            },
+            'required': ['user_id', 'destination', 'travel_date', 'total_amount']
+        }
+    },
+    responses={
+        200: {
+            'description': 'Booking created successfully',
+            'content': {
+                'application/json': {
+                    'example': {
+                        'success': True,
+                        'message': 'Booking created successfully',
+                        'data': {
+                            'booking_id': 'uuid-here',
+                            'booking_reference': 'BK12345678',
+                            'destination': 'Paris, France',
+                            'travel_date': '2024-06-15',
+                            'return_date': '2024-06-22',
+                            'number_of_travelers': 2,
+                            'total_amount': '150000.00',
+                            'booking_status': 'pending',
+                            'created_at': '2024-01-15T10:30:00Z'
+                        }
+                    }
+                }
+            }
+        },
+        400: {'description': 'Bad request - Missing required fields'},
+        404: {'description': 'User not found'},
+        500: {'description': 'Internal server error'}
+    },
+    tags=['Bookings']
+)
 @method_decorator(csrf_exempt, name='dispatch')
 class BookingViewSet(View):
     """
